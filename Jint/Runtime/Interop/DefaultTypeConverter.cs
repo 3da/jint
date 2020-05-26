@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -28,7 +29,7 @@ namespace Jint.Runtime.Interop
         private static readonly Type engineType = typeof(Engine);
         private static readonly Type typeType = typeof(Type);
 
-        private static readonly MethodInfo convertChangeType = typeof(Convert).GetMethod("ChangeType", new [] { objectType, typeType, typeof(IFormatProvider) });
+        private static readonly MethodInfo convertChangeType = typeof(Convert).GetMethod("ChangeType", new[] { objectType, typeType, typeof(IFormatProvider) });
         private static readonly MethodInfo jsValueFromObject = jsValueType.GetMethod(nameof(JsValue.FromObject));
         private static readonly MethodInfo jsValueToObject = jsValueType.GetMethod(nameof(JsValue.ToObject));
 
@@ -132,7 +133,7 @@ namespace Jint.Runtime.Interop
                         for (int i = 0; i < @params.Length; i++)
                         {
                             var boxingExpression = Expression.Convert(@params[i], objectType);
-                            initializers[i]= Expression.Call(null, jsValueFromObject, Expression.Constant(_engine, engineType), boxingExpression);
+                            initializers[i] = Expression.Call(null, jsValueFromObject, Expression.Constant(_engine, engineType), boxingExpression);
                         }
                         var @vars = Expression.NewArrayInit(jsValueType, initializers);
 
@@ -219,6 +220,25 @@ namespace Jint.Runtime.Interop
 
             if (value is ExpandoObject eObj)
             {
+                if (type == typeof(IDictionary<string, object>))
+                    return (IDictionary<string, object>)value;
+
+                if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IDictionary<,>))
+                {
+                    var genericTypeArguments = type.GenericTypeArguments;
+                    var dictType = typeof(Dictionary<,>).MakeGenericType(genericTypeArguments);
+                    var resultDict = Activator.CreateInstance(dictType, Array.Empty<object>()) as IDictionary;
+
+                    foreach (var kv in eObj)
+                    {
+                        var key = Convert(kv.Key, genericTypeArguments[0], formatProvider);
+                        var val = Convert(kv.Value, genericTypeArguments[1], formatProvider);
+                        resultDict[key] = val;
+                    }
+
+                    return resultDict;
+                }
+
                 // public empty constructor required
                 var constructors = type.GetConstructors();
                 // value types
@@ -228,7 +248,7 @@ namespace Jint.Runtime.Interop
                 }
 
                 // reference types - return null if no valid constructor is found
-                if(!type.IsValueType)
+                if (!type.IsValueType)
                 {
                     var found = false;
                     foreach (var constructor in constructors)
@@ -247,7 +267,7 @@ namespace Jint.Runtime.Interop
                     }
                 }
 
-                var dict = (IDictionary<string, object>) eObj;
+                var dict = (IDictionary<string, object>)eObj;
                 var obj = Activator.CreateInstance(type, System.Array.Empty<object>());
 
                 var members = type.GetMembers();
@@ -260,10 +280,15 @@ namespace Jint.Runtime.Interop
                         continue;
                     }
 
-                    var name = member.Name.UpperToLowerCamelCase();
-                    if (dict.TryGetValue(name, out var val))
+                    object propValue = null;
+                    if (dict.TryGetValue(member.Name, out var val1))
+                        propValue = val1;
+                    else if (dict.TryGetValue(member.Name.UpperToLowerCamelCase(), out var val2))
+                        propValue = val2;
+
+                    if (propValue != null)
                     {
-                        var output = Convert(val, member.GetDefinedType(), formatProvider);
+                        var output = Convert(propValue, member.GetDefinedType(), formatProvider);
                         member.SetValue(obj, output);
                     }
                 }

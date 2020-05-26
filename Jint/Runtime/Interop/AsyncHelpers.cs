@@ -26,6 +26,8 @@ namespace Jint.Runtime.Interop
         {
             // VoidTaskResult is an internal Microsoft class used as Task<VoidTaskResult> which correlates to the standard non generic Task
             var taskType = task.GetType();
+            if (taskType == typeof(Task))
+                return true;
             return taskType.IsGenericType
                 && taskType.GenericTypeArguments[0].Name == "VoidTaskResult";
         }

@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Esprima.Ast;
 using Jint.Collections;
 using Jint.Native;
@@ -43,13 +44,13 @@ namespace Jint.Runtime.Interpreter.Expressions
         protected override void Initialize()
         {
             _canBuildFast = true;
-            var expression = (ObjectExpression) _expression;
+            var expression = (ObjectExpression)_expression;
             if (expression.Properties.Count == 0)
             {
                 // empty object initializer
                 return;
             }
-            
+
             _valueExpressions = new JintExpression[expression.Properties.Count];
             _properties = new ObjectProperty[expression.Properties.Count];
 
@@ -73,7 +74,7 @@ namespace Jint.Runtime.Interpreter.Expressions
 
                     if (p.Kind == PropertyKind.Init || p.Kind == PropertyKind.Data)
                     {
-                        var propertyValue = (Expression) p.Value;
+                        var propertyValue = (Expression)p.Value;
                         _valueExpressions[i] = Build(_engine, propertyValue);
                         _canBuildFast &= !propertyValue.IsFunctionWithName();
                     }
@@ -100,14 +101,21 @@ namespace Jint.Runtime.Interpreter.Expressions
         protected override object EvaluateInternal()
         {
             return _canBuildFast
-                ? BuildObjectFast()
-                : BuildObjectNormal();
+                ? BuildObjectFastAsync().Result
+                : BuildObjectNormalAsync().Result;
+        }
+
+        protected override Task<object> EvaluateInternalAsync()
+        {
+            return _canBuildFast
+                ? BuildObjectFastAsync().AsTask()
+                : BuildObjectNormalAsync().AsTask();
         }
 
         /// <summary>
         /// Version that can safely build plain object with only normal init/data fields fast.
         /// </summary>
-        private object BuildObjectFast()
+        private async ValueTask<object> BuildObjectFastAsync()
         {
             var obj = _engine.Object.Construct(0);
             if (_properties.Length == 0)
@@ -120,14 +128,14 @@ namespace Jint.Runtime.Interpreter.Expressions
             {
                 var objectProperty = _properties[i];
                 var valueExpression = _valueExpressions[i];
-                var propValue = valueExpression.GetValue().Clone();
+                var propValue = (await valueExpression.GetValueAsync()).Clone();
                 properties[objectProperty._key] = new PropertyDescriptor(propValue, PropertyFlag.ConfigurableEnumerableWritable);
             }
             obj.SetProperties(properties);
             return obj;
         }
 
-        private object BuildObjectNormal()
+        private async ValueTask<object> BuildObjectNormalAsync()
         {
             var obj = _engine.Object.Construct(_properties.Length);
             bool isStrictModeCode = StrictModeScope.IsStrictModeCode;
@@ -139,13 +147,13 @@ namespace Jint.Runtime.Interpreter.Expressions
                 if (objectProperty is null)
                 {
                     // spread
-                    if (_valueExpressions[i].GetValue() is ObjectInstance source)
+                    if (await _valueExpressions[i].GetValueAsync() is ObjectInstance source)
                     {
                         source.CopyDataProperties(obj, null);
                     }
                     continue;
                 }
-                
+
                 var property = objectProperty._value;
                 var propName = objectProperty.KeyJsString ?? property.GetKey(_engine);
 
@@ -154,10 +162,10 @@ namespace Jint.Runtime.Interpreter.Expressions
                 if (property.Kind == PropertyKind.Init || property.Kind == PropertyKind.Data)
                 {
                     var expr = _valueExpressions[i];
-                    var propValue = expr.GetValue().Clone();
+                    var propValue = (await expr.GetValueAsync()).Clone();
                     if (expr._expression.IsFunctionWithName())
                     {
-                        var functionInstance = (FunctionInstance) propValue;
+                        var functionInstance = (FunctionInstance)propValue;
                         functionInstance.SetFunctionName(propName);
                     }
                     propDesc = new PropertyDescriptor(propValue, PropertyFlag.ConfigurableEnumerableWritable);

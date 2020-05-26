@@ -126,7 +126,7 @@ namespace Jint.Runtime.Interop
             }
         }
 
-        public async override Task<JsValue> CallAsync(JsValue thisObject, JsValue[] jsArguments)
+        public override async Task<JsValue> CallAsync(JsValue thisObject, JsValue[] jsArguments)
         {
             var parameterInfos = _d.Method.GetParameters();
 

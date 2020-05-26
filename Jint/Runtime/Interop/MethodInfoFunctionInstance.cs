@@ -1,6 +1,8 @@
 ﻿using System.Globalization;
+using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Jint.Native;
 using Jint.Native.Function;
@@ -37,8 +39,15 @@ namespace Jint.Runtime.Interop
                 var method = tuple.Item1;
                 var arguments = tuple.Item2;
 
+                var isExtension = method.IsDefined(typeof(ExtensionAttribute));
+
+                if (isExtension)
+                {
+
+                }
+
                 var parameters = new object[arguments.Length];
-                var methodParameters = method.GetParameters();
+                var methodParameters = isExtension ? method.GetParameters().Skip(1).ToArray() : method.GetParameters();
                 var argumentsMatch = true;
 
                 for (var i = 0; i < arguments.Length; i++)
@@ -115,8 +124,11 @@ namespace Jint.Runtime.Interop
                 var method = tuple.Item1;
                 var arguments = tuple.Item2;
 
+                var isExtension = method.IsDefined(typeof(ExtensionAttribute));
+
                 var parameters = new object[arguments.Length];
-                var methodParameters = method.GetParameters();
+                var methodParameters = isExtension ? method.GetParameters().Skip(1).ToArray() : method.GetParameters();
+
                 var argumentsMatch = true;
 
                 for (var i = 0; i < arguments.Length; i++)
@@ -159,6 +171,9 @@ namespace Jint.Runtime.Interop
                 {
                     continue;
                 }
+
+                if (isExtension)
+                    parameters = parameters.Prepend(thisObject.ToObject()).ToArray();
 
                 // todo: cache method info
                 try

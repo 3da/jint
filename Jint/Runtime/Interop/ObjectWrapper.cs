@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Jint.Native;
 using Jint.Native.Object;
@@ -9,10 +10,10 @@ using Jint.Runtime.Descriptors.Specialized;
 
 namespace Jint.Runtime.Interop
 {
-	/// <summary>
-	/// Wraps a CLR instance
-	/// </summary>
-	public sealed class ObjectWrapper : ObjectInstance, IObjectWrapper
+    /// <summary>
+    /// Wraps a CLR instance
+    /// </summary>
+    public sealed class ObjectWrapper : ObjectInstance, IObjectWrapper
     {
         public ObjectWrapper(Engine engine, object obj)
             : base(engine)
@@ -28,7 +29,7 @@ namespace Jint.Runtime.Interop
                     return;
                 }
                 IsArrayLike = true;
-                var functionInstance = new ClrFunctionInstance(engine, "length", (thisObj, arguments) => JsNumber.Create((int) lengthProperty.GetValue(obj)));
+                var functionInstance = new ClrFunctionInstance(engine, "length", (thisObj, arguments) => JsNumber.Create((int)lengthProperty.GetValue(obj)));
                 var descriptor = new GetSetPropertyDescriptor(functionInstance, Undefined, PropertyFlag.Configurable);
                 AddProperty(CommonProperties.Length, descriptor);
             }
@@ -40,14 +41,14 @@ namespace Jint.Runtime.Interop
             {
                 return true;
             }
-            
+
             foreach (var interfaceType in type.GetInterfaces())
             {
                 if (!interfaceType.IsGenericType)
                 {
                     continue;
                 }
-                
+
                 if (interfaceType.GetGenericTypeDefinition() == typeof(IReadOnlyCollection<>)
                     || interfaceType.GetGenericTypeDefinition() == typeof(ICollection<>))
                 {
@@ -105,7 +106,7 @@ namespace Jint.Runtime.Interop
             AddProperty(property, descriptor);
             return descriptor;
         }
-        
+
         private Func<Engine, object, PropertyDescriptor> ResolveProperty(Type type, string propertyName)
         {
             var isNumber = uint.TryParse(propertyName, out _);
@@ -144,10 +145,11 @@ namespace Jint.Runtime.Interop
                 {
                     return (engine, target) => new FieldInfoDescriptor(engine, field, target);
                 }
-                
+
                 // if no properties were found then look for a method
                 List<MethodInfo> methods = null;
-                foreach (var m in type.GetMethods(BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public))
+                foreach (var m in type.GetMethods(BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public)
+                    .Concat(Engine.ExtensionMethods.GetValueOrDefault(type) ?? Enumerable.Empty<MethodInfo>()))
                 {
                     if (EqualsIgnoreCasing(m.Name, propertyName))
                     {
@@ -155,6 +157,8 @@ namespace Jint.Runtime.Interop
                         methods.Add(m);
                     }
                 }
+
+
 
                 if (methods?.Count > 0)
                 {

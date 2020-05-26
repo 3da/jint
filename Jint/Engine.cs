@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Esprima;
@@ -273,6 +275,7 @@ namespace Jint
         internal DebugHandler DebugHandler => _debugHandler ?? (_debugHandler = new DebugHandler(this));
 
         public List<BreakPoint> BreakPoints => _breakPoints ?? (_breakPoints = new List<BreakPoint>());
+        public Dictionary<Type, MethodInfo[]> ExtensionMethods { get; } = new Dictionary<Type, MethodInfo[]>();
 
         internal StepMode? InvokeStepEvent(DebugInformation info)
         {
@@ -479,7 +482,7 @@ namespace Jint
 
             if (!(value is Reference reference))
             {
-                return ((Completion) value).Value;
+                return ((Completion)value).Value;
             }
 
             return GetValue(reference, returnReferenceToPool);
@@ -506,7 +509,7 @@ namespace Jint
             {
                 return baseValue;
             }
-            
+
             if (reference.IsPropertyReference())
             {
                 var property = reference.GetReferencedName();
@@ -555,7 +558,7 @@ namespace Jint
                         return Undefined.Instance;
                     }
 
-                    var callable = (ICallable) getter.AsObject();
+                    var callable = (ICallable)getter.AsObject();
                     return callable.Call(baseValue, Arguments.Empty);
                 }
             }
@@ -579,7 +582,7 @@ namespace Jint
         {
             if (property == CommonProperties.Length)
             {
-                jsValue = JsNumber.Create((uint) s.Length);
+                jsValue = JsNumber.Create((uint)s.Length);
                 return true;
             }
 
@@ -641,7 +644,7 @@ namespace Jint
             }
             else
             {
-                ((EnvironmentRecord) baseValue).SetMutableBinding(property.ToString(), value, reference.IsStrictReference());
+                ((EnvironmentRecord)baseValue).SetMutableBinding(property.ToString(), value, reference.IsStrictReference());
             }
         }
 
@@ -837,7 +840,7 @@ namespace Jint
                     // TODO: match functionality with DeclarationEnvironmentRecord.AddFunctionParameters here
                     // slow path
                     var parameters = functionInstance._formalParameters;
-                    for (uint i = 0; i < (uint) parameters.Length; i++)
+                    for (uint i = 0; i < (uint)parameters.Length; i++)
                     {
                         var argName = parameters[i];
                         var v = i + 1 > arguments.Length ? Undefined.Instance : arguments[i];
@@ -960,6 +963,32 @@ namespace Jint
             {
                 ExceptionHelper.ThrowArgumentException(propertyName);
             }
+        }
+
+        public void RegisterExtensions(Type extensionType)
+        {
+
+            var methods = extensionType.GetMethods(BindingFlags.Static | BindingFlags.Public);
+
+            var t = methods.Where(q => q.IsDefined(typeof(ExtensionAttribute)))
+                .Select(q => new
+                {
+                    Parameters = q.GetParameters(),
+                    Method = q
+                })
+                .Select(q => new
+                {
+                    Type = q.Parameters[0].ParameterType,
+                    Method = q.Method
+                })
+                .GroupBy(q => q.Type, q => q.Method);
+
+            foreach (var q in t)
+            {
+                ExtensionMethods[q.Key] = ExtensionMethods.GetValueOrDefault(q.Key, System.Array.Empty<MethodInfo>())
+                    .Concat(q).ToArray();
+            }
+
         }
     }
 }
